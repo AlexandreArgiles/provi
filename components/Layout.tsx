@@ -6,7 +6,8 @@ import { NotificationCenter } from './NotificationCenter';
 import { 
   LayoutDashboard, FileText, Settings as SettingsIcon, Menu, LogOut, 
   Package, Users, Shield, Lock, ShoppingCart, BarChart3, Archive, 
-  CreditCard, PieChart, Moon, Sun, Monitor, Bell, AlertTriangle, UserSquare2 
+  CreditCard, PieChart, Moon, Sun, Monitor, Bell, AlertTriangle, UserSquare2,
+  Building2 
 } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 
@@ -28,7 +29,15 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, activeCompany, o
 
   // --- NAVIGATION CONFIG ---
   const navItems: NavItem[] = [
+    // --- ROTAS GERAIS ---
     { id: '/', label: 'Visão Geral', icon: <LayoutDashboard size={20} />, roles: ['ADMIN', 'FUNCIONARIO', 'TECHNICIAN'] },
+    
+    // --- ROTAS SUPER ADMIN (Adicionadas Agora) ---
+    { id: '/', label: 'Painel Global', icon: <LayoutDashboard size={20} />, roles: ['SUPER_ADMIN'] },
+    { id: '/audit', label: 'Auditoria Global', icon: <Shield size={20} />, roles: ['SUPER_ADMIN'] },
+    { id: '/privacy', label: 'Centro LGPD', icon: <Lock size={20} />, roles: ['SUPER_ADMIN'] },
+    
+    // --- ROTAS MÓDULOS ---
     { id: '/orders', label: 'Ordens de Serviço', icon: <FileText size={20} />, roles: ['ADMIN', 'FUNCIONARIO', 'TECHNICIAN'], requiredModule: 'ASSISTANCE' },
     { id: '/pos', label: 'Vendas / PDV', icon: <ShoppingCart size={20} />, roles: ['ADMIN', 'FUNCIONARIO'], requiredModule: 'SALES' },
     { id: '/inventory', label: 'Estoque', icon: <Package size={20} />, roles: ['ADMIN', 'FUNCIONARIO', 'TECHNICIAN'], requiredModule: 'SALES' },
@@ -38,18 +47,21 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, activeCompany, o
     { id: '/assistance-reports', label: 'Relatórios Técnicos', icon: <PieChart size={20} />, roles: ['ADMIN'], requiredModule: 'ASSISTANCE' }, 
     { id: '/catalog', label: 'Catálogo Serviços', icon: <Package size={20} />, roles: ['ADMIN'], requiredModule: 'ASSISTANCE' },
     { id: '/team', label: 'Equipe', icon: <Users size={20} />, roles: ['ADMIN'] }, 
-    { id: '/audit', label: 'Auditoria', icon: <Shield size={20} />, roles: ['ADMIN'] },
+    
+    // --- CONFIGURAÇÕES ---
     { id: '/plan', label: 'Meu Plano', icon: <CreditCard size={20} />, roles: ['ADMIN'] },
-    { id: '/privacy', label: 'LGPD', icon: <Lock size={20} />, roles: ['ADMIN'] }, 
     { id: '/settings', label: 'Configurações', icon: <SettingsIcon size={20} />, roles: ['ADMIN'] },
   ];
 
   const visibleNavItems = navItems.filter(item => {
+      // 1. Role Check
       if (user && !item.roles.includes(user.role)) return false;
+      // 2. Module Check
       if (item.requiredModule && !DataService.hasModule(item.requiredModule)) return false;
       return true;
   });
 
+  // (O resto do componente permanece igual, apenas adicionei os itens acima)
   useEffect(() => {
       if (user && user.companyId) {
           const check = () => {
@@ -78,7 +90,6 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, activeCompany, o
   };
 
   return (
-    // MUDANÇA PRINCIPAL AQUI: h-screen e overflow-hidden no container pai
     <div className="h-screen w-full bg-slate-100 dark:bg-slate-950 flex font-sans transition-colors duration-300 overflow-hidden">
       
       {/* BANNER DE COBRANÇA */}
@@ -92,7 +103,6 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, activeCompany, o
           </div>
       )}
 
-      {/* MOBILE OVERLAY */}
       {isSidebarOpen && (
         <div 
             className="fixed inset-0 bg-black/50 z-20 lg:hidden backdrop-blur-sm"
@@ -100,7 +110,6 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, activeCompany, o
         />
       )}
 
-      {/* SIDEBAR */}
       <aside className={`
         fixed inset-y-0 left-0 z-30 w-64 bg-slate-900 text-white transform transition-transform duration-300 cubic-bezier(0.4, 0, 0.2, 1) lg:translate-x-0 lg:static lg:inset-auto flex flex-col shadow-2xl lg:shadow-none h-full
         ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
@@ -111,7 +120,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, activeCompany, o
           <div>
             <span className="font-bold text-lg tracking-tight block leading-none">Providencia</span>
             <span className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">
-               {user.role === 'ADMIN' ? 'Admin' : 'Técnico'}
+               {user.role === 'SUPER_ADMIN' ? 'Super Admin' : user.role === 'ADMIN' ? 'Gestão' : 'Técnico'}
             </span>
           </div>
         </div>
@@ -126,7 +135,6 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, activeCompany, o
             </div>
         </div>
 
-        {/* MUDANÇA: overflow-y-auto apenas no menu */}
         <nav className="p-4 space-y-1 flex-1 overflow-y-auto custom-scrollbar">
           {visibleNavItems.map(item => (
             <button
@@ -168,11 +176,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, activeCompany, o
         </div>
       </aside>
 
-      {/* MAIN CONTENT WRAPPER */}
-      {/* MUDANÇA: h-full e overflow-hidden para garantir que este container não cresça mais que a tela */}
       <main className={`flex-1 flex flex-col h-full overflow-hidden ${activeCompany?.subscriptionStatus === 'PAST_DUE' ? 'pt-10' : ''}`}>
-        
-        {/* HEADER FIXO */}
         <header className="h-16 flex-none bg-white dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-4 lg:px-8 shadow-sm z-10">
           <div className="flex items-center lg:hidden">
               <button onClick={() => setSidebarOpen(true)} className="p-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors mr-2">
@@ -182,7 +186,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, activeCompany, o
           </div>
           
           <div className="hidden lg:block text-sm text-slate-500 dark:text-slate-400">
-             {activeCompany ? `Empresa: ${activeCompany.name}` : ''}
+             {user.role === 'SUPER_ADMIN' ? <span className="text-primary font-bold">Modo Deus (Super Admin)</span> : (activeCompany ? `Empresa: ${activeCompany.name}` : '')}
           </div>
 
           <div className="flex items-center gap-4">
@@ -206,10 +210,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, activeCompany, o
           </div>
         </header>
 
-        {/* ÁREA DE CONTEÚDO SCROLLÁVEL */}
-        {/* MUDANÇA: overflow-y-auto aqui. É SÓ AQUI que a rolagem deve acontecer */}
         <div className="flex-1 overflow-y-auto p-4 lg:p-8 relative scroll-smooth">
-           {/* Fundo decorativo fixo */}
            <div className="fixed top-0 left-0 w-full h-full bg-gradient-to-b from-slate-200 to-transparent dark:from-slate-900/50 dark:to-transparent -z-10 pointer-events-none"></div>
            <div className="max-w-7xl mx-auto pb-10">
               {children}

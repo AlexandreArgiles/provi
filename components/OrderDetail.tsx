@@ -497,6 +497,7 @@ export const OrderDetail: React.FC<OrderDetailProps> = ({ order, currentUser, on
                                 >
                                     <PenTool className="w-4 h-4 mr-2" /> Aprovar Agora
                                 </Button>
+                                {/* CORREÇÃO AQUI: Mudança do texto do botão */}
                                 <Button 
                                     size="sm" 
                                     className="bg-green-600 hover:bg-green-700 text-white border-transparent shadow-sm"
@@ -505,7 +506,7 @@ export const OrderDetail: React.FC<OrderDetailProps> = ({ order, currentUser, on
                                         setShowWhatsAppModal(true);
                                     }}
                                 >
-                                    <MessageCircle className="w-4 h-4 mr-2" /> Reenviar
+                                    <MessageCircle className="w-4 h-4 mr-2" /> Enviar via WhatsApp
                                 </Button>
                               </div>
                           )}

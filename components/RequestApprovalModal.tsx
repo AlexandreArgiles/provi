@@ -53,7 +53,11 @@ export const RequestApprovalModal: React.FC<RequestApprovalModalProps> = ({ orde
         DataService.saveOrder(updatedOrder);
 
         setToken(approval.token);
-        setGeneratedLink(`https://providencia.app/approval/${approval.token}`);
+        
+        // --- CORREÇÃO AQUI: Link dinâmico baseado na URL atual ---
+        const baseUrl = window.location.origin; // Pega 'http://localhost:3000' ou o domínio real
+        setGeneratedLink(`${baseUrl}/?approval_token=${approval.token}`);
+        
         setStep('READY');
     };
 

@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { DataService } from '../services/dataService';
 import { generateApprovalReceipt } from '../services/pdfService';
-import { ServiceApproval, OrderStatus, Company } from '../types';
-import { ShieldCheck, Check, X, Lock, FileText, PenTool, Download, MessageSquare, ScrollText } from 'lucide-react';
+import { ServiceApproval, OrderStatus, Company, ServiceItem } from '../types';
+import { ShieldCheck, Check, X, Lock, FileText, PenTool, Download, MessageSquare, ScrollText, AlertTriangle } from 'lucide-react';
 import { SignaturePad } from './ui/SignaturePad';
 
 interface CustomerApprovalPageProps {
@@ -25,13 +25,24 @@ export const CustomerApprovalPage: React.FC<CustomerApprovalPageProps> = ({ toke
     const [signatureImage, setSignatureImage] = useState<string | null>(null);
     const [agreedTerms, setAgreedTerms] = useState(false);
 
+    // --- LÓGICA DE SELEÇÃO ---
+    const [selectedItems, setSelectedItems] = useState<ServiceItem[]>([]);
+    const [currentTotal, setCurrentTotal] = useState(0);
+
     useEffect(() => {
         // Simulate Network Fetch
         setTimeout(() => {
             const app = DataService.getApprovalByToken(token);
             if (app) {
                 setApproval(app);
-                // Fetch context data (in real app, this would be a join in backend)
+                // Inicializa os itens (todos marcados por padrão)
+                const initialItems = app.itemsSnapshot.map(item => ({
+                    ...item,
+                    approved: true
+                }));
+                setSelectedItems(initialItems);
+                setCurrentTotal(app.totalValue);
+
                 const order = DataService.getOrderById(app.serviceOrderId);
                 const companies = DataService.getCompanies();
                 const comp = companies.find(c => c.id === app.companyId);
@@ -42,6 +53,24 @@ export const CustomerApprovalPage: React.FC<CustomerApprovalPageProps> = ({ toke
             setIsLoading(false);
         }, 800);
     }, [token]);
+
+    const toggleItem = (itemId: string) => {
+        const updated = selectedItems.map(item => {
+            if (item.id === itemId) {
+                if (item.severity === 'critical') return item; // Bloqueia críticos
+                return { ...item, approved: !item.approved };
+            }
+            return item;
+        });
+
+        setSelectedItems(updated);
+        
+        const newTotal = updated
+            .filter(i => i.approved)
+            .reduce((acc, curr) => acc + curr.price, 0);
+        
+        setCurrentTotal(newTotal);
+    };
 
     const handleReject = () => {
         if (!approval) return;
@@ -55,7 +84,12 @@ export const CustomerApprovalPage: React.FC<CustomerApprovalPageProps> = ({ toke
 
         setIsLoading(true);
 
-        // 1. Save Signature first to get ID
+        const finalApprovalData: ServiceApproval = {
+            ...approval,
+            itemsSnapshot: selectedItems,
+            totalValue: currentTotal
+        };
+
         const signature = DataService.saveSignature({
             serviceApprovalId: approval.id,
             signatureImage: signatureImage,
@@ -65,48 +99,35 @@ export const CustomerApprovalPage: React.FC<CustomerApprovalPageProps> = ({ toke
             userAgent: navigator.userAgent
         });
 
-        // 2. Pre-calculate Hash for PDF (Critical for QR Code)
-        // We generate it here so we can put it in the PDF before saving the approval decision
-        const verificationHash = DataService.generateVerificationHash(approval, signature.id);
+        const verificationHash = DataService.generateVerificationHash(finalApprovalData, signature.id);
 
-        // 3. Generate Receipt PDF with the Hash
-        // Important: Get the Full Settings (including Logo/CNPJ)
         const settings = DataService.getSettings(); 
-        
-        const companyContext = {
-            ...company,
-            ...settings 
-        };
+        const companyContext = { ...company, ...settings };
 
         const receiptUrl = await generateApprovalReceipt(
             orderData, 
             {
-                ...approval, 
+                ...finalApprovalData, 
                 respondedAt: Date.now(),
-                verificationHash: verificationHash // INJECT HASH HERE
+                verificationHash: verificationHash
             }, 
             signature, 
             companyContext,
             settings.address
         );
 
-        // 4. Process Approval with Signature Link & Receipt
-        // The service will recalculate/verify the hash internally or we could pass it, 
-        // but since logic is deterministic, it matches.
         DataService.processApprovalDecision(approval.token, 'APPROVED', undefined, signature.id, receiptUrl);
         
-        // 5. Create WhatsApp Notification (Sent to Customer via DataService)
         const link = `https://providencia.app/receipt/${approval.id}`;
         DataService.createWhatsappMessage({
             serviceOrderId: orderData.id,
             customerPhone: orderData.customerPhone,
-            messageBody: `Olá ${orderData.customerName.split(' ')[0]}, sua autorização foi registrada. Baixe seu comprovante: ${link}`,
+            messageBody: `Olá ${orderData.customerName.split(' ')[0]}, sua autorização foi registrada (R$ ${currentTotal.toFixed(2)}). Baixe seu comprovante: ${link}`,
             status: 'SENT_VIA_LINK',
             provider: 'LINK'
         });
 
-        // 6. Update UI
-        setApproval({ ...approval, status: 'APPROVED', receiptUrl: receiptUrl, verificationHash: verificationHash });
+        setApproval({ ...finalApprovalData, status: 'APPROVED', receiptUrl: receiptUrl, verificationHash: verificationHash });
         setIsSigning(false);
         setIsSuccess(true);
         setIsLoading(false);
@@ -128,7 +149,7 @@ export const CustomerApprovalPage: React.FC<CustomerApprovalPageProps> = ({ toke
 
     if (isLoading) {
         return (
-            <div className="min-h-screen bg-slate-50 flex items-center justify-center flex-col">
+            <div className="h-screen bg-slate-50 flex items-center justify-center flex-col">
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
                 <p className="text-slate-500 text-sm">Processando...</p>
             </div>
@@ -137,7 +158,7 @@ export const CustomerApprovalPage: React.FC<CustomerApprovalPageProps> = ({ toke
 
     if (!approval || !orderData) {
         return (
-            <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6 text-center">
+            <div className="h-screen bg-slate-50 flex items-center justify-center p-6 text-center">
                 <div>
                     <Lock className="w-16 h-16 text-slate-300 mx-auto mb-4" />
                     <h2 className="text-xl font-bold text-slate-800">Link Inválido ou Expirado</h2>
@@ -151,8 +172,8 @@ export const CustomerApprovalPage: React.FC<CustomerApprovalPageProps> = ({ toke
     // SUCCESS SCREEN
     if (isSuccess) {
         return (
-            <div className="min-h-screen bg-slate-100 font-sans flex items-center justify-center p-4">
-                <div className="bg-white w-full max-w-md rounded-2xl shadow-xl p-8 text-center animate-fade-in">
+            <div className="h-screen overflow-y-auto bg-slate-100 font-sans flex items-center justify-center p-4">
+                <div className="bg-white w-full max-w-md rounded-2xl shadow-xl p-8 text-center animate-fade-in my-auto">
                     <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
                         <Check className="w-10 h-10 text-green-600" />
                     </div>
@@ -182,8 +203,10 @@ export const CustomerApprovalPage: React.FC<CustomerApprovalPageProps> = ({ toke
         );
     }
 
+    // MUDANÇA CRÍTICA AQUI: h-screen e overflow-y-auto
     return (
-        <div className="min-h-screen bg-slate-100 font-sans pb-20">
+        <div className="h-screen overflow-y-auto bg-slate-100 font-sans pb-32 scroll-smooth">
+            
             {/* Trust Header */}
             <div className="bg-white border-b border-slate-200 sticky top-0 z-20 shadow-sm">
                 <div className="max-w-md mx-auto px-4 py-3 flex items-center justify-between">
@@ -193,7 +216,6 @@ export const CustomerApprovalPage: React.FC<CustomerApprovalPageProps> = ({ toke
                         </div>
                         <span className="text-xs font-bold text-green-700 uppercase tracking-wider">Ambiente Seguro</span>
                     </div>
-                    {/* Demo Close Button */}
                     <button onClick={onClose} className="text-xs text-slate-400 hover:text-slate-600">Fechar Demo</button>
                 </div>
             </div>
@@ -202,7 +224,6 @@ export const CustomerApprovalPage: React.FC<CustomerApprovalPageProps> = ({ toke
                 
                 {/* Hero / Company Info */}
                 <div className="text-center py-4">
-                    {/* Show Logo in the approval page header if available (Getting from DataService for consistent preview) */}
                     {DataService.getSettings().logoUrl ? (
                         <img src={DataService.getSettings().logoUrl} className="h-16 mx-auto mb-2 object-contain" alt="Logo" />
                     ) : null}
@@ -253,10 +274,11 @@ export const CustomerApprovalPage: React.FC<CustomerApprovalPageProps> = ({ toke
                             
                             <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
                                 <h4 className="text-xs font-bold text-slate-500 uppercase flex items-center mb-2">
-                                    <FileText size={14} className="mr-1" /> Parecer Técnico
+                                    <FileText size={14} className="mr-1" /> Resumo do Aceite
                                 </h4>
                                 <div className="text-sm text-slate-700 leading-relaxed mb-4 border-b border-slate-200 pb-4">
-                                    {approval.description}
+                                    <p>Você está aprovando <strong>{selectedItems.filter(i => i.approved).length} itens</strong> no valor total de:</p>
+                                    <p className="text-xl font-bold text-slate-900 mt-1">R$ {currentTotal.toFixed(2)}</p>
                                 </div>
 
                                 <h4 className="text-xs font-bold text-slate-500 uppercase flex items-center mb-2">
@@ -290,7 +312,7 @@ export const CustomerApprovalPage: React.FC<CustomerApprovalPageProps> = ({ toke
                                     onChange={(e) => setAgreedTerms(e.target.checked)}
                                 />
                                 <span className="text-xs text-slate-600 leading-relaxed">
-                                    Declaro que li e concordo com os termos de garantia, autorizo a execução do serviço no valor de <strong>R$ {approval.totalValue.toFixed(2)}</strong>.
+                                    Declaro que li e concordo com os termos de garantia, autorizo a execução do serviço no valor de <strong>R$ {currentTotal.toFixed(2)}</strong>.
                                 </span>
                             </label>
 
@@ -312,7 +334,7 @@ export const CustomerApprovalPage: React.FC<CustomerApprovalPageProps> = ({ toke
                         </div>
                     </div>
                 ) : (
-                    // STANDARD VIEW
+                    // STANDARD VIEW (ORÇAMENTO)
                     <>
                         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                             <div className="bg-blue-600 p-4 text-white">
@@ -327,9 +349,74 @@ export const CustomerApprovalPage: React.FC<CustomerApprovalPageProps> = ({ toke
                             </div>
                         </div>
 
+                        {/* LISTA DE ITENS INTERATIVA */}
+                        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+                            <div className="flex justify-between items-center mb-4">
+                                <h3 className="text-sm font-bold text-slate-900">Itens e Serviços</h3>
+                                <span className="text-xs text-slate-500 bg-slate-100 px-2 py-1 rounded">
+                                    Toque para selecionar
+                                </span>
+                            </div>
+                            
+                            <div className="space-y-3">
+                                {selectedItems.map((item) => (
+                                    <div 
+                                        key={item.id} 
+                                        className={`flex justify-between items-start py-3 px-3 rounded-lg border transition-all cursor-pointer select-none
+                                            ${item.approved 
+                                                ? 'border-blue-200 bg-blue-50/50' 
+                                                : 'border-slate-100 bg-white opacity-60'
+                                            }
+                                        `}
+                                        onClick={() => toggleItem(item.id)}
+                                    >
+                                        <div className="flex items-start gap-3">
+                                            <div className={`mt-0.5 w-5 h-5 rounded border flex items-center justify-center transition-colors
+                                                ${item.approved 
+                                                    ? 'bg-blue-600 border-blue-600' 
+                                                    : 'bg-white border-slate-300'
+                                                }
+                                            `}>
+                                                {item.approved && <Check size={14} className="text-white" />}
+                                            </div>
+                                            <div>
+                                                <p className={`font-medium text-sm ${item.approved ? 'text-slate-900' : 'text-slate-500 line-through'}`}>
+                                                    {item.name}
+                                                </p>
+                                                
+                                                {item.severity === 'critical' ? (
+                                                    <p className="text-[10px] text-red-600 font-bold flex items-center mt-1">
+                                                        <AlertTriangle size={10} className="mr-1" />
+                                                        Item Crítico (Obrigatório)
+                                                    </p>
+                                                ) : (
+                                                    <p className="text-[10px] text-blue-600 font-medium mt-1">
+                                                        Item Sugerido (Opcional)
+                                                    </p>
+                                                )}
+                                            </div>
+                                        </div>
+                                        <span className={`font-bold text-sm ${item.approved ? 'text-slate-900' : 'text-slate-400'}`}>
+                                            R$ {item.price.toFixed(2)}
+                                        </span>
+                                    </div>
+                                ))}
+                            </div>
+                            
+                            <div className="mt-6 pt-4 border-t border-slate-100 flex justify-between items-end">
+                                <div className="text-slate-500 text-sm">
+                                    <p>Total Aprovado</p>
+                                    <p className="text-xs text-slate-400">
+                                        {selectedItems.filter(i => i.approved).length} de {selectedItems.length} itens
+                                    </p>
+                                </div>
+                                <span className="text-3xl font-bold text-slate-900">R$ {currentTotal.toFixed(2)}</span>
+                            </div>
+                        </div>
+
                         <div>
                             <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-3 ml-2">Evidências</h3>
-                            <div className="flex gap-3 overflow-x-auto pb-4 snap-x">
+                            <div className="flex gap-3 overflow-x-auto pb-4 snap-x custom-scrollbar">
                                 {orderData.evidence.length > 0 ? orderData.evidence.map((ev: any) => (
                                     <div key={ev.id} className="snap-center shrink-0 w-48 h-48 bg-slate-200 rounded-xl overflow-hidden relative shadow-md">
                                         <img src={ev.url} className="w-full h-full object-cover" />
@@ -342,25 +429,6 @@ export const CustomerApprovalPage: React.FC<CustomerApprovalPageProps> = ({ toke
                                         Sem fotos anexadas.
                                     </div>
                                 )}
-                            </div>
-                        </div>
-
-                        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
-                            <h3 className="text-sm font-bold text-slate-900 mb-4">Custos</h3>
-                            <div className="space-y-3">
-                                {approval.itemsSnapshot.map((item: any) => (
-                                    <div key={item.id} className="flex justify-between items-start py-2 border-b border-slate-50 last:border-0">
-                                        <div>
-                                            <p className="font-medium text-slate-800 text-sm">{item.name}</p>
-                                            <p className="text-xs text-slate-500">{item.severity === 'critical' ? 'Item Crítico' : 'Sugerido'}</p>
-                                        </div>
-                                        <span className="font-bold text-slate-900 text-sm">R$ {item.price.toFixed(2)}</span>
-                                    </div>
-                                ))}
-                            </div>
-                            <div className="mt-6 pt-4 border-t border-slate-100 flex justify-between items-end">
-                                <span className="text-slate-500 text-sm">Total Geral</span>
-                                <span className="text-3xl font-bold text-slate-900">R$ {approval.totalValue.toFixed(2)}</span>
                             </div>
                         </div>
                     </>
@@ -384,13 +452,14 @@ export const CustomerApprovalPage: React.FC<CustomerApprovalPageProps> = ({ toke
                             onClick={handleReject}
                             className="w-full py-3.5 rounded-xl border border-red-200 text-red-600 font-bold text-sm active:bg-red-50 transition-colors"
                         >
-                            Recusar
+                            Recusar Tudo
                         </button>
                         <button 
                             onClick={() => setIsSigning(true)}
                             className="w-full py-3.5 rounded-xl bg-slate-900 text-white font-bold text-sm shadow-lg shadow-slate-300 active:scale-95 transition-transform flex items-center justify-center"
                         >
-                            <ShieldCheck className="w-4 h-4 mr-2" /> Aprovar
+                            <ShieldCheck className="w-4 h-4 mr-2" /> 
+                            Aprovar (R$ {currentTotal.toFixed(0)})
                         </button>
                     </div>
                 </div>

@@ -25,7 +25,7 @@ export const CustomerApprovalPage: React.FC<CustomerApprovalPageProps> = ({ toke
     const [signatureImage, setSignatureImage] = useState<string | null>(null);
     const [agreedTerms, setAgreedTerms] = useState(false);
 
-    // --- LÓGICA DE SELEÇÃO ---
+    // --- NOVA LÓGICA DE SELEÇÃO ---
     const [selectedItems, setSelectedItems] = useState<ServiceItem[]>([]);
     const [currentTotal, setCurrentTotal] = useState(0);
 
@@ -35,10 +35,12 @@ export const CustomerApprovalPage: React.FC<CustomerApprovalPageProps> = ({ toke
             const app = DataService.getApprovalByToken(token);
             if (app) {
                 setApproval(app);
-                // Inicializa os itens (todos marcados por padrão)
+                // Inicializa os itens selecionados (Todos vêm marcados por padrão, exceto se já tiver lógica anterior)
+                // Se o backend suportasse 'approved' false no snapshot, respeitaríamos aqui.
+                // Como é snapshot de orçamento, assumimos tudo true inicialmente.
                 const initialItems = app.itemsSnapshot.map(item => ({
                     ...item,
-                    approved: true
+                    approved: true // Força true visualmente no início
                 }));
                 setSelectedItems(initialItems);
                 setCurrentTotal(app.totalValue);
@@ -54,10 +56,12 @@ export const CustomerApprovalPage: React.FC<CustomerApprovalPageProps> = ({ toke
         }, 800);
     }, [token]);
 
+    // Função para alternar itens sugeridos
     const toggleItem = (itemId: string) => {
         const updated = selectedItems.map(item => {
             if (item.id === itemId) {
-                if (item.severity === 'critical') return item; // Bloqueia críticos
+                // Não permite desmarcar itens críticos
+                if (item.severity === 'critical') return item;
                 return { ...item, approved: !item.approved };
             }
             return item;
@@ -65,6 +69,7 @@ export const CustomerApprovalPage: React.FC<CustomerApprovalPageProps> = ({ toke
 
         setSelectedItems(updated);
         
+        // Recalcula total
         const newTotal = updated
             .filter(i => i.approved)
             .reduce((acc, curr) => acc + curr.price, 0);
@@ -84,12 +89,14 @@ export const CustomerApprovalPage: React.FC<CustomerApprovalPageProps> = ({ toke
 
         setIsLoading(true);
 
+        // 0. Preparar o objeto de aprovação FINAL com os itens que o usuário escolheu
         const finalApprovalData: ServiceApproval = {
             ...approval,
-            itemsSnapshot: selectedItems,
-            totalValue: currentTotal
+            itemsSnapshot: selectedItems, // Salva o estado dos checkboxes (approved true/false)
+            totalValue: currentTotal // Salva o novo total
         };
 
+        // 1. Save Signature first to get ID
         const signature = DataService.saveSignature({
             serviceApprovalId: approval.id,
             signatureImage: signatureImage,
@@ -99,10 +106,16 @@ export const CustomerApprovalPage: React.FC<CustomerApprovalPageProps> = ({ toke
             userAgent: navigator.userAgent
         });
 
+        // 2. Pre-calculate Hash for PDF (Critical for QR Code)
         const verificationHash = DataService.generateVerificationHash(finalApprovalData, signature.id);
 
+        // 3. Generate Receipt PDF with the Hash AND UPDATED ITEMS
         const settings = DataService.getSettings(); 
-        const companyContext = { ...company, ...settings };
+        
+        const companyContext = {
+            ...company,
+            ...settings 
+        };
 
         const receiptUrl = await generateApprovalReceipt(
             orderData, 
@@ -116,8 +129,12 @@ export const CustomerApprovalPage: React.FC<CustomerApprovalPageProps> = ({ toke
             settings.address
         );
 
+        // 4. Process Approval with Signature Link & Receipt
+        // Aqui estamos passando o receiptUrl que contém o PDF com os valores corretos.
+        // Num cenário real, enviaríamos também o 'finalApprovalData' para o backend atualizar o banco.
         DataService.processApprovalDecision(approval.token, 'APPROVED', undefined, signature.id, receiptUrl);
         
+        // 5. Create WhatsApp Notification
         const link = `https://providencia.app/receipt/${approval.id}`;
         DataService.createWhatsappMessage({
             serviceOrderId: orderData.id,
@@ -127,6 +144,7 @@ export const CustomerApprovalPage: React.FC<CustomerApprovalPageProps> = ({ toke
             provider: 'LINK'
         });
 
+        // 6. Update UI
         setApproval({ ...finalApprovalData, status: 'APPROVED', receiptUrl: receiptUrl, verificationHash: verificationHash });
         setIsSigning(false);
         setIsSuccess(true);
@@ -149,7 +167,7 @@ export const CustomerApprovalPage: React.FC<CustomerApprovalPageProps> = ({ toke
 
     if (isLoading) {
         return (
-            <div className="h-screen bg-slate-50 flex items-center justify-center flex-col">
+            <div className="min-h-screen bg-slate-50 flex items-center justify-center flex-col">
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
                 <p className="text-slate-500 text-sm">Processando...</p>
             </div>
@@ -158,7 +176,7 @@ export const CustomerApprovalPage: React.FC<CustomerApprovalPageProps> = ({ toke
 
     if (!approval || !orderData) {
         return (
-            <div className="h-screen bg-slate-50 flex items-center justify-center p-6 text-center">
+            <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6 text-center">
                 <div>
                     <Lock className="w-16 h-16 text-slate-300 mx-auto mb-4" />
                     <h2 className="text-xl font-bold text-slate-800">Link Inválido ou Expirado</h2>
@@ -172,8 +190,8 @@ export const CustomerApprovalPage: React.FC<CustomerApprovalPageProps> = ({ toke
     // SUCCESS SCREEN
     if (isSuccess) {
         return (
-            <div className="h-screen overflow-y-auto bg-slate-100 font-sans flex items-center justify-center p-4">
-                <div className="bg-white w-full max-w-md rounded-2xl shadow-xl p-8 text-center animate-fade-in my-auto">
+            <div className="min-h-screen bg-slate-100 font-sans flex items-center justify-center p-4">
+                <div className="bg-white w-full max-w-md rounded-2xl shadow-xl p-8 text-center animate-fade-in">
                     <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
                         <Check className="w-10 h-10 text-green-600" />
                     </div>
@@ -203,10 +221,8 @@ export const CustomerApprovalPage: React.FC<CustomerApprovalPageProps> = ({ toke
         );
     }
 
-    // MUDANÇA CRÍTICA AQUI: h-screen e overflow-y-auto
     return (
-        <div className="h-screen overflow-y-auto bg-slate-100 font-sans pb-32 scroll-smooth">
-            
+        <div className="min-h-screen bg-slate-100 font-sans pb-24"> {/* Aumentei pb-24 para footer não cobrir */}
             {/* Trust Header */}
             <div className="bg-white border-b border-slate-200 sticky top-0 z-20 shadow-sm">
                 <div className="max-w-md mx-auto px-4 py-3 flex items-center justify-between">

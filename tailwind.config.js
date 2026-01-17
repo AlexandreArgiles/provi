@@ -1,6 +1,8 @@
 /** @type {import('tailwindcss').Config} */
+import colors from 'tailwindcss/colors';
+
 export default {
-  darkMode: 'class', // <--- ESSA LINHA É A MÁGICA QUE ATIVA OS TEMAS
+  darkMode: 'class',
   content: [
     "./index.html",
     "./src/**/*.{js,ts,jsx,tsx}",
@@ -10,8 +12,23 @@ export default {
   theme: {
     extend: {
       colors: {
+        // Cores Semânticas (Fácil de mudar a marca depois)
+        primary: {
+            DEFAULT: '#2563EB', // blue-600 (Cor principal da marca)
+            hover: '#1D4ED8',   // blue-700
+            light: '#60A5FA',   // blue-400
+        },
+        surface: {
+            50: '#f8fafc',
+            100: '#f1f5f9',
+            200: '#e2e8f0',
+            300: '#cbd5e1',
+            800: '#1e293b', // Card background dark
+            900: '#0f172a', // Input background dark
+            950: '#020617', // Page background dark
+        },
         slate: {
-            950: '#020617', // Mantendo o suporte ao modo escuro profundo
+            950: '#020617',
         }
       },
       animation: {

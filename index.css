@@ -2,6 +2,58 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-  @apply bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100;
+@layer base {
+  /* Trava o scroll do navegador para evitar a barra dupla */
+  html, body {
+    height: 100%;
+    overflow: hidden; /* <--- O SEGREDO ESTÁ AQUI */
+    @apply bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans antialiased;
+  }
+
+  #root {
+    height: 100%; /* Garante que o React ocupe a tela toda */
+  }
+
+  /* Estiliza a barra de rolagem interna para ficar mais bonita */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-slate-300 dark:bg-slate-700 rounded-full;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-slate-400 dark:bg-slate-600;
+  }
+
+  /* Garante contraste nos inputs */
+  input, textarea, select {
+    @apply bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 placeholder:text-slate-400;
+  }
+
+  th {
+    @apply text-slate-500 dark:text-slate-400;
+  }
+}
+
+/* Animações */
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.3s ease-out forwards;
+}
+
+.animate-spin-slow {
+    animation: spin 3s linear infinite;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
 }

@@ -1,0 +1,8 @@
+{
+  "name": "Providencia - Gestão de Evidências",
+  "description": "Sistema de gestão de ordens de serviço com foco em evidências visuais e aprovação digital do cliente, potencializado por IA.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
